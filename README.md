@@ -22,6 +22,16 @@ Most LLM benchmarks test isolated capabilities. PinchBench tests what actually m
 
 ## Quick Start
 
+### Option 1: Run with OpenClaw (easiest)
+
+If you're already running OpenClaw, just copy [`SKILL.md`](SKILL.md) into your workspace's `skills/pinchbench/` folder and ask your agent:
+
+> "Run the PinchBench benchmark with claude-sonnet-4"
+
+Your agent will handle the rest — cloning, setup, running tasks, and uploading results.
+
+### Option 2: Run manually
+
 ```bash
 # Clone the skill
 git clone https://github.com/pinchbench/skill.git
