@@ -734,6 +734,10 @@ def _extract_usage_from_transcript(transcript: List[Dict[str, Any]]) -> Dict[str
     return totals
 
 
+# Valid thinking levels for OpenClaw agents
+VALID_THINKING_LEVELS = ("off", "minimal", "low", "medium", "high")
+
+
 def _archive_transcript(
     *,
     agent_id: str,
@@ -772,14 +776,13 @@ def execute_openclaw_task(
     skill_dir: Path,
     output_dir: Optional[Path] = None,
     verbose: bool = False,
+    thinking_level: str | None = None,
 ) -> Dict[str, Any]:
     logger.info("🤖 Agent [%s] starting task: %s", agent_id, task.task_id)
     logger.info("   Task: %s", task.name)
     logger.info("   Category: %s", task.category)
-    if verbose:
-        logger.info(
-            "   Prompt: %s", task.prompt[:500] + "..." if len(task.prompt) > 500 else task.prompt
-        )
+    if thinking_level:
+        logger.info("   Thinking: %s", thinking_level)
 
     # Clean up previous session transcripts so we can reliably find this task's
     # transcript (OpenClaw uses its own UUID-based naming, not our session ID).
@@ -805,7 +808,6 @@ def execute_openclaw_task(
     exit_code = -1
     timed_out = False
 
-    # Check if this is a multi-session task
     sessions = task.frontmatter.get("sessions", [])
     if sessions:
         # Multi-session task: send each prompt in sequence.
@@ -862,6 +864,8 @@ def execute_openclaw_task(
                     ]
                 if use_local:
                     cmd.insert(2, "--local")
+                if thinking_level:
+                    cmd.extend(["--thinking", thinking_level])
                 result = subprocess.run(
                     cmd,
                     capture_output=True,
@@ -885,7 +889,6 @@ def execute_openclaw_task(
                 stderr = f"openclaw command not found: {exc}"
                 break
     else:
-        # Single-session task: send task.prompt once
         try:
             cmd = [
                     "openclaw",
@@ -899,6 +902,8 @@ def execute_openclaw_task(
                 ]
             if use_local:
                 cmd.insert(2, "--local")
+            if thinking_level:
+                cmd.extend(["--thinking", thinking_level])
             result = subprocess.run(
                 cmd,
                 capture_output=True,
@@ -1021,6 +1026,7 @@ def execute_openclaw_task(
     return {
         "agent_id": agent_id,
         "task_id": task.task_id,
+        "thinking_level": thinking_level,
         "status": status,
         "transcript": transcript,
         "usage": usage,
@@ -1039,6 +1045,7 @@ def run_openclaw_prompt(
     prompt: str,
     workspace: Path,
     timeout_seconds: float,
+    thinking_level: str | None = None,
 ) -> Dict[str, Any]:
     """Run a single OpenClaw prompt for helper agents like the judge."""
     cleanup_agent_sessions(agent_id)
@@ -1101,17 +1108,20 @@ def run_openclaw_prompt(
                 if USE_SHELL
                 else chunk
             )
+            cmd = [
+                openclaw_path,
+                "agent",
+                "--agent",
+                agent_id,
+                "--session-id",
+                session_id,
+                "--message",
+                send_chunk,
+            ]
+            if thinking_level:
+                cmd.extend(["--thinking", thinking_level])
             result = subprocess.run(
-                [
-                    openclaw_path,
-                    "agent",
-                    "--agent",
-                    agent_id,
-                    "--session-id",
-                    session_id,
-                    "--message",
-                    send_chunk,
-                ],
+                cmd,
                 capture_output=True,
                 text=True,
                 cwd=str(workspace),
