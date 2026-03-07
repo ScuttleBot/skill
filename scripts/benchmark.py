@@ -35,7 +35,8 @@ from lib_agent import (
     ModelValidationError,
     slugify_model,
     validate_openrouter_model,
-    VALID_THINKING_LEVELS,
+    THINKING_LEVELS,
+    validate_thinking_level,
 )
 from lib_axiom import init_axiom
 from lib_grading import (
@@ -307,7 +308,8 @@ def _parse_args() -> argparse.Namespace:
         type=str,
         default=None,
         help="Comma-separated thinking levels to test (e.g., 'low,medium,high'). "
-        f"Valid levels: {', '.join(VALID_THINKING_LEVELS)}. "
+        f"Valid levels: {', '.join(THINKING_LEVELS)}. "
+        "Note: 'xhigh' is only supported by GPT-5.x models. "
         "If not specified, runs without explicit thinking level.",
     )
     args = parser.parse_args()
@@ -344,27 +346,28 @@ def _select_task_ids(
     return [task_id.strip() for task_id in suite.split(",") if task_id.strip()]
 
 
-def _parse_thinking_levels(thinking_arg: Optional[str]) -> List[Optional[str]]:
+def _parse_thinking_levels(
+    thinking_arg: Optional[str],
+    model_id: Optional[str] = None,
+) -> List[Optional[str]]:
     """
     Parse thinking levels from the argument.
 
-    Returns a list of thinking levels to test.
-    Each element is either a valid thinking level string or None (no explicit level).
+    Args:
+        thinking_arg: Comma-separated thinking levels or None
+        model_id: Optional model ID to check xhigh compatibility
+
+    Returns:
+        List of validated thinking levels (or [None] if no explicit level).
     """
     if thinking_arg is None:
         return [None]  # Run once without explicit thinking level
 
     levels = []
     for level in thinking_arg.split(","):
-        level = level.strip().lower()
-        if level in VALID_THINKING_LEVELS:
-            levels.append(level)
-        else:
-            logger.warning(
-                "Invalid thinking level '%s', skipping. Valid levels: %s",
-                level,
-                ", ".join(VALID_THINKING_LEVELS),
-            )
+        validated = validate_thinking_level(level.strip(), model_id)
+        if validated:
+            levels.append(validated)
 
     return levels if levels else [None]
 
@@ -841,7 +844,7 @@ def main():
     cleanup_agent_sessions(agent_id)
 
     task_ids = _select_task_ids(runner.tasks, args.suite, runner.task_loader.category_map)
-    thinking_levels = _parse_thinking_levels(args.thinking)
+    thinking_levels = _parse_thinking_levels(args.thinking, args.model)
     
     # Handle --core flag: use core tasks from manifest
     if args.core:
