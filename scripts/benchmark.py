@@ -309,7 +309,7 @@ def _parse_args() -> argparse.Namespace:
         default=None,
         help="Comma-separated thinking levels to test (e.g., 'low,medium,high'). "
         f"Valid levels: {', '.join(THINKING_LEVELS)}. "
-        "Note: 'xhigh' is only supported by GPT-5.x models. "
+        "Note: 'xhigh' requires GPT-5.x models; 'adaptive' is for Anthropic Claude 4.6. "
         "If not specified, runs without explicit thinking level.",
     )
     args = parser.parse_args()
@@ -355,21 +355,32 @@ def _parse_thinking_levels(
 
     Args:
         thinking_arg: Comma-separated thinking levels or None
-        model_id: Optional model ID to check xhigh compatibility
+        model_id: Optional model ID to check level compatibility
 
     Returns:
         List of validated thinking levels (or [None] if no explicit level).
+
+    Raises:
+        ValueError: If --thinking was provided but no levels are valid for the model.
     """
     if thinking_arg is None:
         return [None]  # Run once without explicit thinking level
 
-    levels = []
+    levels: List[str] = []
+    seen = set()
     for level in thinking_arg.split(","):
         validated = validate_thinking_level(level.strip(), model_id)
-        if validated:
+        if validated and validated not in seen:
             levels.append(validated)
+            seen.add(validated)
 
-    return levels if levels else [None]
+    if not levels:
+        raise ValueError(
+            "No valid thinking levels remain after validation. "
+            "Check your --thinking values for this model."
+        )
+
+    return levels
 
 
 def _next_run_id(run_root: Path) -> str:
@@ -844,7 +855,11 @@ def main():
     cleanup_agent_sessions(agent_id)
 
     task_ids = _select_task_ids(runner.tasks, args.suite, runner.task_loader.category_map)
-    thinking_levels = _parse_thinking_levels(args.thinking, args.model)
+    try:
+        thinking_levels = _parse_thinking_levels(args.thinking, args.model)
+    except ValueError as exc:
+        logger.error(str(exc))
+        sys.exit(2)
     
     # Handle --core flag: use core tasks from manifest
     if args.core:
@@ -854,8 +869,7 @@ def main():
         else:
             task_ids = core_task_ids
             logger.info(f"🎯 Core mode: running {len(core_task_ids)} representative tasks")
-    
-    results = []
+
     grades_by_task_id: Dict[str, Dict[str, Any]] = {}
     grades_by_task_and_thinking: Dict[str, Dict[str, Any]] = {}
     sanity_task_id = "task_sanity"
