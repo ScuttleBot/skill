@@ -885,6 +885,10 @@ def execute_openclaw_task(
     logger.info("🤖 Agent [%s] starting task: %s", agent_id, task.task_id)
     logger.info("   Task: %s", task.name)
     logger.info("   Category: %s", task.category)
+    if verbose:
+        logger.info(
+            "   Prompt: %s", task.prompt[:500] + "..." if len(task.prompt) > 500 else task.prompt
+        )
     if thinking_level:
         logger.info("   Thinking: %s", thinking_level)
 
@@ -912,6 +916,7 @@ def execute_openclaw_task(
     exit_code = -1
     timed_out = False
 
+    # Check if this is a multi-session task
     sessions = task.frontmatter.get("sessions", [])
     if sessions:
         # Multi-session task: send each prompt in sequence.
@@ -993,6 +998,7 @@ def execute_openclaw_task(
                 stderr = f"openclaw command not found: {exc}"
                 break
     else:
+        # Single-session task: send task.prompt once
         try:
             cmd = [
                     "openclaw",
